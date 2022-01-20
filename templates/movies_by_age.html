@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Movies_by_age</title>
+</head>
+<body>
+<h1>Фильмы {{ category }}</h1>
+     {% for movie in movies %}
+        <div>
+            <p><h3>{{ movie.title }}</h3></p>
+            <p><em>Возрастная категория: {{ movie.rating }}</em></p>
+            <p>{{ movie.description }}</p>
+        </div>
+     {% endfor %}
+</body>
+</html>
