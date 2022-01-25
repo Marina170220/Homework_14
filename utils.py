@@ -1,5 +1,21 @@
-import json
 import sqlite3
+from collections import Counter
+
+DATA = 'netflix.db'
+
+
+def db_connect(db, query):
+    """
+    Подключение к БД и получение списка данных по заданным параметрам.
+    :param db: база данных.
+    :param query: параметры запроса.
+    :return: результат отбора.
+    """
+    with sqlite3.connect(db) as con:
+        cur = con.cursor()
+        cur.execute(query)
+        result = cur.fetchall()
+        return result
 
 
 def get_movie_by_id(movie_title):
@@ -8,26 +24,24 @@ def get_movie_by_id(movie_title):
     :param movie_title: название фильма (или слово в названии).
     :return: первый фильм из списка найденных.
     """
-    selected_movies = []
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT * FROM netflix"
-                        " WHERE type = 'Movie' "
-                        "ORDER BY release_year DESC ")
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
-
-        for row in executed_query:
-            if movie_title.lower() in row[2].lower():
-                found_movie = {
-                    "title": row[2],
-                    "country": row[5],
-                    "release_year": row[7],
-                    "genre": row[8],
-                    "description": row[12]
-                }
-                selected_movies.append(found_movie)
-        return selected_movies[0]
+    query = f"""SELECT title, country, release_year, listed_in, description FROM netflix
+         WHERE type = 'Movie' AND title like '%{movie_title}%'
+         ORDER BY release_year DESC 
+         LIMIT 1
+         """
+    movie = db_connect(DATA, query)
+    if movie:
+        found_movie = {
+            "title": movie[0][0],
+            "country": movie[0][1],
+            "release_year": movie[0][2],
+            "genre": movie[0][3],
+            "description": movie[0][4].rstrip('\n')
+        }
+        print(found_movie)
+        return found_movie
+    else:
+        return "Movies not found"
 
 
 def get_movies_by_release_years(start_year, end_year):
@@ -38,71 +52,69 @@ def get_movies_by_release_years(start_year, end_year):
     :return: список фильмов, входящих в диапазон, ограниченный 100 первыми фильмами.
     """
     selected_movies = []
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT title, release_year FROM netflix "
-                        "WHERE type = 'Movie' "
-                        "ORDER BY release_year "
-                        )
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
+    query = f"""SELECT title, release_year
+                FROM netflix
+                WHERE release_year BETWEEN {start_year} AND {end_year}
+                ORDER BY release_year
+                LIMIT 100;
+            """
+    movies = db_connect(DATA, query)
 
-        for row in executed_query:
-            if start_year <= row[1] <= end_year:
-                selected_movies.append({
-                    "title": row[0],
-                    "release_year": row[1],
-                })
-        return selected_movies[:100]
+    for movie in movies:
+        selected_movies.append({
+            "title": movie[0],
+            "release_year": movie[1],
+        })
+    return selected_movies
 
 
-def get_movies_by_age(age_category):
+def get_movies_by_age(age):
     """
     Сортирует фильмы в зависимости от возрастных ограничений.
-    :param age_category: возрастная категория.
+    :param age: возрастная категория.
     :return: список фильмов, соответствующий категории.
     """
-    movies_for_children = []
-    movies_for_family = []
-    movies_fo_adults = []
+    selected_movies = []
+    age_category = get_age_category(age)
 
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT title, rating, description FROM netflix "
-                        "WHERE type = 'Movie' "
-                        "ORDER BY rating ")
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
+    query = f"""SELECT title, rating, description
+                FROM netflix
+                WHERE rating IN ('{age_category}')
+                ORDER BY title
+                LIMIT 100;
+            """
+    movies = db_connect(DATA, query)
 
-        for row in executed_query:
-            if row[1] == 'G':
-                movies_for_children.append({
-                    "title": row[0],
-                    "rating": row[1],
-                    "description": row[2],
-                })
+    for movie in movies:
+        selected_movies.append({
+            "title": movie[0],
+            "rating": movie[1],
+            "description": movie[2].rstrip('\n'),
+        })
+    return selected_movies
 
-            elif row[1] in ['G', 'PG', 'PG-13']:
-                movies_for_family.append({
-                    "title": row[0],
-                    "rating": row[1],
-                    "description": row[2],
-                })
 
-            elif row[1] in ['R', 'NC-17']:
-                movies_fo_adults.append({
-                    "title": row[0],
-                    "rating": row[1],
-                    "description": row[2],
-                })
+def get_age_category(age):
+    """
+    Возвращает список обозначений возрастных категорий и преобразует его к строке.
+    :param age: возрастная категория зрителей.
+    :return: строка, содержащая возрастные категории, соответствующие обозначениям в БД Netflix.
+    """
+    if age.lower() == 'children':
+        age_category = ['G']
+    elif age.lower() == 'family':
+        age_category = ['G', 'PG', 'PG-13']
+    elif age.lower() == 'adult':
+        age_category = ['R', 'NC-17']
+    else:
+        return "Уточните категорию"
 
-        match age_category:
-            case 'children':
-                return movies_for_children
-            case 'family':
-                return movies_for_family
-            case 'adult':
-                return movies_fo_adults
+    if len(age_category) > 1:
+        str_age_category = "','".join(age_category)
+    else:
+        str_age_category = "".join(age_category)
+
+    return str_age_category
 
 
 def get_movies_by_genre(genre):
@@ -112,22 +124,21 @@ def get_movies_by_genre(genre):
     :return: список отобранных фильмов.
     """
     selected_movies = []
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT title, listed_in, description FROM netflix "
-                        "WHERE type = 'Movie' "
-                        "ORDER BY release_year DESC "
-                        )
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
 
-        for row in executed_query:
-            if genre.lower() in row[1].lower():
-                selected_movies.append({
-                    "title": row[0],
-                    "description": row[2],
-                })
-        return selected_movies[:10]
+    query = f"""SELECT title, listed_in, description
+                   FROM netflix
+                   WHERE listed_in LIKE '%{genre}%'
+                   ORDER BY release_year DESC
+                   LIMIT 10;
+               """
+    movies = db_connect(DATA, query)
+
+    for movie in movies:
+        selected_movies.append({
+            "title": movie[0],
+            "description": movie[2].rstrip('\n'),
+        })
+    return selected_movies
 
 
 def get_actors(first_actor, second_actor):
@@ -137,24 +148,23 @@ def get_actors(first_actor, second_actor):
     :param second_actor: второй актёр.
     :return: список отобранных актёров.
     """
-    actors = []
-    selected_actors = set()
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT netflix.cast FROM netflix "
-                        "WHERE type = 'Movie' ")
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
+    all_actors = []
+    selected_actors = []
 
-        for row in executed_query:
-            if first_actor and second_actor in row[0]:
-                for actor in row[0].split(', '):
-                    if actor != first_actor and actor != second_actor:
-                        actors.append(actor)
-                        if actors.count(actor) >= 2:
-                            selected_actors.add(actor)
+    query = f"""SELECT netflix.cast
+                      FROM netflix
+                      WHERE netflix.cast LIKE '%{first_actor}%' AND netflix.cast LIKE '%{second_actor}%';
+                  """
+    result = db_connect(DATA, query)
 
-        return selected_actors
+    for actors in result:
+        actors_list = actors[0].split(',')
+        all_actors += actors_list
+    counter = Counter(all_actors)
+    for key, value in counter.items():
+        if value > 2 and key.strip() not in [first_actor, second_actor]:
+            selected_actors.append(key)
+    return selected_actors
 
 
 def get_movies_list(type_, year, genre):
@@ -165,47 +175,23 @@ def get_movies_list(type_, year, genre):
     :param genre: жанр.
     :return: список отобранных фильмов с описаниями.
     """
-    movies = []
-    tv_shows = []
-    with sqlite3.connect("netflix.db") as con:
-        cur = con.cursor()
-        sqlite_query = ("SELECT type, title, release_year, listed_in, description "
-                        "FROM netflix "
-                        "WHERE type != '' ")
-        cur.execute(sqlite_query)
-        executed_query = cur.fetchall()
+    result_list = []
 
-        for row in executed_query:
-            if row[0] == 'Movie':
-                movies.append({
-                    "title": row[1],
-                    "year": row[2],
-                    "genre": row[3],
-                    "description": row[4],
-                })
-            else:
-                tv_shows.append({
-                    "title": row[1],
-                    "year": row[2],
-                    "genre": row[3],
-                    "description": row[4],
-                })
+    query = f"""SELECT type, title, release_year, listed_in, description 
+                        FROM netflix
+                        WHERE type LIKE '%{type_}%' 
+                        AND release_year = {year} 
+                        AND listed_in LIKE '%{genre}%';
+                    """
+    result = db_connect(DATA, query)
 
-        if type_.lower() == 'movie':
-            found_movies = [movie for movie in movies if year == movie.get('year')
-                            and genre.lower() in movie.get("genre").lower()]
+    for row in result:
+        result_list.append({
+            "type": row[0],
+            "title": row[1],
+            "year": row[2],
+            "genre": row[3],
+            "description": row[4],
+        })
 
-        else:
-            found_movies = [show for show in tv_shows if year == show.get('year')
-                            and genre.lower() in show.get("genre").lower()]
-
-        return found_movies
-
-
-# """
-# Проверка записи в json-файл
-# """
-# with open('movies.json', 'w',  encoding='UTF-8') as fp:
-#     movies = get_movies_list('Movie', 2010, 'dramas')
-#     json.dump(movies, fp, indent=4)
-
+    return result_list

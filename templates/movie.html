@@ -1,15 +1,15 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" xmlns="http://www.w3.org/1999/html">
 <head>
     <meta charset="UTF-8">
     <title>Movie</title>
 </head>
 <body>
 
-    <h2>{{ movie.title }}</h2>
+    <h2>*** {{ movie.title }} ***</h2>
     <p>Страна: {{ movie.country }}</p>
-    <p>Год выхода: {{ movie.release_year }}</p>
-    <p>Возрастная категория: {{ movie.genre }}</p>
+    <p>Год выхода: <b>{{ movie.release_year }}</b></p>
+    <p>Жанр: {{ movie.genre }}</p>
     <p>Описание: {{ movie.description }}</p>
 </body>
 </html>
